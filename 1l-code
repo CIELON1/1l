@@ -1,0 +1,301 @@
+package com.example.a1l
+
+import android.content.Intent
+import android.content.pm.ActivityInfo
+import android.content.pm.PackageManager
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.Text
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
+import com.example.a1l.ui.theme._1LTheme
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import java.text.SimpleDateFormat
+import java.util.*
+import kotlin.random.Random
+
+class MainActivity : ComponentActivity() {
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        hideSystemUI()
+
+        setContent {
+            _1LTheme {
+                LinuxLauncher()
+            }
+        }
+    }
+
+    private fun hideSystemUI() {
+        val windowInsetsController = WindowCompat.getInsetsController(window, window.decorView)
+        windowInsetsController.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        windowInsetsController.hide(WindowInsetsCompat.Type.systemBars())
+    }
+}
+
+@Composable
+fun LinuxLauncher() {
+    val context = LocalContext.current
+    val packageManager = context.packageManager
+    val apps = remember {
+        val intent = Intent(Intent.ACTION_MAIN, null).apply {
+            addCategory(Intent.CATEGORY_LAUNCHER)
+        }
+        packageManager.queryIntentActivities(intent, 0)
+            .map { it.activityInfo }
+            .sortedBy { it.loadLabel(packageManager).toString() }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Transparent)
+            .padding(24.dp), // Increased gap
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(16.dp) // Increased gap
+    ) {
+        TopWidgets(modifier = Modifier.weight(1f))
+        AppGrid(apps = apps, modifier = Modifier.weight(2f))
+        BottomClock(modifier = Modifier.fillMaxWidth())
+    }
+}
+
+@Composable
+fun TopWidgets(modifier: Modifier = Modifier) {
+    val pagerState = rememberPagerState(initialPage = 1, pageCount = { 3 })
+    val context = LocalContext.current
+
+    // Automatically launch Termux and swipe back
+    LaunchedEffect(pagerState.currentPage, pagerState.isScrollInProgress) {
+        if (!pagerState.isScrollInProgress && pagerState.currentPage == 0) {
+            val isTermuxInstalled = try {
+                context.packageManager.getPackageInfo("com.termux", 0)
+                true
+            } catch (e: PackageManager.NameNotFoundException) {
+                false
+            }
+
+            if (isTermuxInstalled) {
+                val intent = context.packageManager.getLaunchIntentForPackage("com.termux")
+                if (intent != null) {
+                    context.startActivity(intent)
+                    // Swipe back to the notepad page
+                    pagerState.scrollToPage(1)
+                }
+            }
+        }
+    }
+
+    HorizontalPager(state = pagerState, modifier = modifier.fillMaxWidth()) { page ->
+        when (page) {
+            0 -> TermuxLauncher()
+            1 -> Notepad()
+            2 -> CMatrix()
+        }
+    }
+}
+
+@Composable
+fun AppGrid(apps: List<ActivityInfo>, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+
+    LazyVerticalGrid(
+        columns = GridCells.Adaptive(minSize = 80.dp),
+        modifier = modifier
+            .fillMaxWidth()
+            .background(Color(0xFF1E1E1E))
+            .padding(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        items(apps) { app ->
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.clickable { 
+                    val launchIntent = context.packageManager.getLaunchIntentForPackage(app.packageName)
+                    context.startActivity(launchIntent)
+                 }
+            ) {
+                Text(
+                    text = app.loadLabel(context.packageManager).toString(),
+                    color = Color.White,
+                    fontSize = 12.sp
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun BottomClock(modifier: Modifier = Modifier) {
+    var time by remember { mutableStateOf(Calendar.getInstance().time) }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(1000)
+            time = Calendar.getInstance().time
+        }
+    }
+
+    Box(
+        modifier = modifier
+            .background(Color(0xFF2E2E2E))
+            .padding(8.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(time),
+            color = Color.White,
+            fontSize = 20.sp
+        )
+    }
+}
+
+@Composable
+fun Notepad() {
+    var text by remember { mutableStateOf(TextFieldValue("")) }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF1E1E1E))
+            .padding(8.dp)
+    ) {
+        BasicTextField(
+            value = text,
+            onValueChange = { text = it },
+            modifier = Modifier.fillMaxSize(),
+            textStyle = LocalTextStyle.current.copy(color = Color.White, fontSize = 14.sp)
+        )
+    }
+}
+
+@Composable
+fun TermuxLauncher() {
+    val context = LocalContext.current
+    val isTermuxInstalled = remember {
+        try {
+            context.packageManager.getPackageInfo("com.termux", 0)
+            true
+        } catch (e: PackageManager.NameNotFoundException) {
+            false
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF1E1E1E)),
+        contentAlignment = Alignment.Center
+    ) {
+        if (!isTermuxInstalled) {
+            Text(
+                text = "Termux is not installed. Please swipe back.",
+                color = Color.White,
+                fontSize = 14.sp
+            )
+        } else {
+            Text(
+                text = "Launching Termux...",
+                color = Color.White,
+                fontSize = 14.sp
+            )
+        }
+    }
+}
+
+class Raindrop(var x: Float, var y: Float, var speed: Float, var char: Char)
+
+@Composable
+fun CMatrix() {
+    val fontSize = 20.sp
+    val fontSizePx = with(LocalDensity.current) { fontSize.toPx() }
+    val characters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".toCharArray()
+    
+    val raindrops = remember { mutableStateListOf<Raindrop>() }
+    var canvasSize by remember { mutableStateOf<Size?>(null) }
+    
+    val paint = remember(fontSizePx) {
+        Paint().asFrameworkPaint().apply {
+            isAntiAlias = true
+            color = android.graphics.Color.WHITE // Changed to white
+            textSize = fontSizePx
+        }
+    }
+    
+    var frame by remember { mutableLongStateOf(0L) }
+
+    LaunchedEffect(canvasSize) {
+        val localCanvasSize = canvasSize ?: return@LaunchedEffect
+
+        if (raindrops.isEmpty()) {
+            val columns = (localCanvasSize.width / fontSizePx).toInt()
+            for (i in 0 until columns) {
+                raindrops.add(
+                    Raindrop(
+                        x = i * fontSizePx,
+                        y = Random.nextFloat() * -localCanvasSize.height * 1.5f,
+                        speed = Random.nextFloat() * 20f + 10f,
+                        char = characters.random()
+                    )
+                )
+            }
+        }
+
+        while(isActive) {
+            raindrops.forEach { drop ->
+                drop.y += drop.speed
+                if (drop.y - drop.speed > localCanvasSize.height) {
+                    drop.y = Random.nextFloat() * -localCanvasSize.height
+                    drop.char = characters.random()
+                }
+            }
+            frame++
+            delay(24)
+        }
+    }
+
+    Canvas(modifier = Modifier.fillMaxSize().background(Color(0xFF1E1E1E))) { 
+        if (canvasSize == null) {
+            canvasSize = size
+        }
+
+        frame.let { 
+            drawIntoCanvas { canvas ->
+                raindrops.forEach { drop ->
+                    if (drop.y > 0 && drop.y < size.height) { 
+                        canvas.nativeCanvas.drawText(drop.char.toString(), drop.x, drop.y, paint)
+                    }
+                }
+            }
+        }
+    }
+}
